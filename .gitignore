@@ -3,6 +3,7 @@ venv/
 __pycache__/
 *.pyc
 *.mp3
+cookies.txt
 .opencode/
 .agents/
 skills-lock.json
