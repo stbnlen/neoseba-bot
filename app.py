@@ -129,10 +129,10 @@ async def on_ready():
     print(f"Bot conectado como {bot.user} | Voz: {VOICE_ID}")
 
 
-@bot.command(name="tts")
-async def tts(ctx, *, texto: str):
+@bot.command(name="sd")
+async def sd(ctx, *, texto: str):
     if not texto:
-        await ctx.send("Debes escribir un texto. Uso: `!tts <texto>`")
+        await ctx.send("Debes escribir un texto. Uso: `!sd <texto>`")
         return
 
     if not ctx.author.voice or not ctx.author.voice.channel:
