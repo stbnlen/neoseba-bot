@@ -19,6 +19,18 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
+EMBED_COLORS = {
+    "music": 0x9B59B6,
+    "success": 0x2ECC71,
+    "error": 0xE74C3C,
+    "info": 0x3498DB,
+    "warning": 0xF39C12,
+}
+
+
+def _embed(title: str, description: str = "", color: int = 0x9B59B6) -> discord.Embed:
+    return discord.Embed(title=title, description=description, color=color)
+
 music_queues: dict[int, deque[dict]] = {}
 
 YDL_OPTS = {
@@ -81,7 +93,7 @@ async def _play_next(ctx: commands.Context):
         if track["duration"]
         else "?"
     )
-    await ctx.send(f"Now playing: **{track['title']}** [{duration}]")
+    await ctx.send(embed=_embed("Now Playing", f"**{track['title']}** [{duration}]", EMBED_COLORS["music"]))
 
 
 leave_tasks: dict[int, asyncio.Task] = {}
@@ -132,11 +144,11 @@ async def on_ready():
 @bot.command(name="sd")
 async def sd(ctx, *, texto: str):
     if not texto:
-        await ctx.send("Debes escribir un texto. Uso: `!sd <texto>`")
+        await ctx.send(embed=_embed("Uso", "Debes escribir un texto.\nUso: `!sd <texto>`", EMBED_COLORS["warning"]))
         return
 
     if not ctx.author.voice or not ctx.author.voice.channel:
-        await ctx.send("Debes estar en un canal de voz para usar este comando.")
+        await ctx.send(embed=_embed("Error", "Debes estar en un canal de voz para usar este comando.", EMBED_COLORS["error"]))
         return
 
     voice_channel = ctx.author.voice.channel
@@ -183,7 +195,7 @@ async def sd(ctx, *, texto: str):
 async def setvoz(ctx, voice_id: str):
     global VOICE_ID
     VOICE_ID = voice_id
-    await ctx.send(f"Voz cambiada a ID: `{voice_id}`")
+    await ctx.send(embed=_embed("Voz Actualizada", f"Voz cambiada a ID: `{voice_id}`", EMBED_COLORS["success"]))
 
 
 @bot.command(name="leave")
@@ -192,15 +204,15 @@ async def leave(ctx):
     voice_client = discord.utils.get(bot.voice_clients, guild=ctx.guild)
     if voice_client and voice_client.is_connected():
         await voice_client.disconnect()
-        await ctx.send("Desconectado del canal de voz.")
+        await ctx.send(embed=_embed("Desconectado", "Desconectado del canal de voz.", EMBED_COLORS["info"]))
     else:
-        await ctx.send("No estoy en un canal de voz.")
+        await ctx.send(embed=_embed("Error", "No estoy en un canal de voz.", EMBED_COLORS["error"]))
 
 
 @bot.command(name="pley")
 async def play(ctx, *, url: str):
     if not ctx.author.voice or not ctx.author.voice.channel:
-        await ctx.send("Debes estar en un canal de voz para usar este comando.")
+        await ctx.send(embed=_embed("Error", "Debes estar en un canal de voz para usar este comando.", EMBED_COLORS["error"]))
         return
 
     voice_channel = ctx.author.voice.channel
@@ -212,16 +224,16 @@ async def play(ctx, *, url: str):
     else:
         voice_client = await voice_channel.connect(self_deaf=False)
 
-    msg = await ctx.send("Buscando...")
+    msg = await ctx.send(embed=_embed("Buscando", "Buscando audio...", EMBED_COLORS["info"]))
 
     try:
         track = await asyncio.to_thread(_extract_info, url)
     except Exception as e:
-        await msg.edit(content=f"Error al obtener info del video: {e}")
+        await msg.edit(embed=_embed("Error", f"Error al obtener info del video: {e}", EMBED_COLORS["error"]))
         return
 
     if not track or not track["url"]:
-        await msg.edit(content="No se pudo obtener el audio del link proporcionado.")
+        await msg.edit(embed=_embed("Error", "No se pudo obtener el audio del link proporcionado.", EMBED_COLORS["error"]))
         return
 
     queue = _get_queue(ctx.guild.id)
@@ -234,12 +246,12 @@ async def play(ctx, *, url: str):
             else "?"
         )
         await msg.edit(
-            content=f"Agregado a la cola: **{track['title']}** [{duration}] (posicion {len(queue)})"
+            embed=_embed("Agregado a la Cola", f"**{track['title']}** [{duration}]\nPosicion: {len(queue)}", EMBED_COLORS["success"])
         )
         return
 
     queue.append(track)
-    await msg.edit(content=f"Reproduciendo: **{track['title']}**")
+    await msg.edit(embed=_embed("Reproduciendo", f"**{track['title']}**", EMBED_COLORS["music"]))
     await _play_next(ctx)
 
 
@@ -252,9 +264,9 @@ async def skip(ctx):
 
     if voice_client.is_playing():
         voice_client.stop()
-        await ctx.send("Saltado.")
+        await ctx.send(embed=_embed("Saltado", "Cancion saltada.", EMBED_COLORS["info"]))
     else:
-        await ctx.send("No hay nada reproduciendose ahora.")
+        await ctx.send(embed=_embed("Error", "No hay nada reproduciendose ahora.", EMBED_COLORS["error"]))
 
 
 @bot.command(name="stop")
@@ -263,9 +275,9 @@ async def stop(ctx):
     voice_client = discord.utils.get(bot.voice_clients, guild=ctx.guild)
     if voice_client and voice_client.is_connected():
         voice_client.stop()
-        await ctx.send("Reproduccion detenida y cola limpiada.")
+        await ctx.send(embed=_embed("Detenido", "Reproduccion detenida y cola limpiada.", EMBED_COLORS["info"]))
     else:
-        await ctx.send("No estoy en un canal de voz.")
+        await ctx.send(embed=_embed("Error", "No estoy en un canal de voz.", EMBED_COLORS["error"]))
 
 
 @bot.command(name="queue")
@@ -274,7 +286,7 @@ async def queue_cmd(ctx):
     voice_client = discord.utils.get(bot.voice_clients, guild=ctx.guild)
 
     if not q and (not voice_client or not voice_client.is_playing()):
-        await ctx.send("La cola esta vacia.")
+        await ctx.send(embed=_embed("Cola Vacia", "No hay canciones en la cola.", EMBED_COLORS["warning"]))
         return
 
     lines = []
@@ -292,7 +304,7 @@ async def queue_cmd(ctx):
     content = "\n".join(lines)
     if len(content) > 1900:
         content = content[:1900] + "\n..."
-    await ctx.send(content)
+    await ctx.send(embed=_embed("Cola de Reproduccion", content, EMBED_COLORS["music"]))
 
 
 if __name__ == "__main__":
