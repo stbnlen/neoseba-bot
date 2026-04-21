@@ -1,5 +1,6 @@
 import os
 import asyncio
+import time
 import discord
 import yt_dlp
 from collections import deque
@@ -12,6 +13,7 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 VOICE_ID = os.getenv("VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
+PRUEBAS_CHANNEL_ID = int(os.getenv("PRUEBAS_CHANNEL_ID", "0"))
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -97,6 +99,80 @@ async def _play_next(ctx: commands.Context):
 
 
 leave_tasks: dict[int, asyncio.Task] = {}
+
+SPAM_WINDOW = 30
+SPAM_CHANNEL_THRESHOLD = 3
+spam_tracker: dict[int, list[tuple[str, int, int, float]]] = {}
+
+
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot or not message.guild:
+        return
+
+    await bot.process_commands(message)
+
+    if not PRUEBAS_CHANNEL_ID:
+        return
+
+    user_id = message.author.id
+    content = message.content.strip()
+    if not content:
+        return
+
+    now = time.time()
+    entries = spam_tracker.get(user_id, [])
+    entries = [
+        (c, ch, mid, ts) for c, ch, mid, ts in entries if now - ts <= SPAM_WINDOW
+    ]
+    entries.append((content, message.channel.id, message.id, now))
+    spam_tracker[user_id] = entries
+
+    channels_with_same = set()
+    msgs_same_content = []
+    for c, ch, mid, ts in entries:
+        if c == content:
+            channels_with_same.add(ch)
+            msgs_same_content.append((ch, mid))
+
+    if len(channels_with_same) < SPAM_CHANNEL_THRESHOLD:
+        return
+
+    pruebas_channel = bot.get_channel(PRUEBAS_CHANNEL_ID)
+    deleted_count = 0
+    delete_failed = 0
+
+    for ch_id, msg_id in msgs_same_content:
+        if ch_id == PRUEBAS_CHANNEL_ID:
+            continue
+        channel = bot.get_channel(ch_id)
+        if not channel:
+            continue
+        try:
+            msg = await channel.fetch_message(msg_id)
+            await msg.delete()
+            deleted_count += 1
+        except discord.NotFound:
+            pass
+        except discord.Forbidden:
+            delete_failed += 1
+        except discord.HTTPException:
+            delete_failed += 1
+
+    spam_tracker.pop(user_id, None)
+
+    if pruebas_channel:
+        channel_list = ", ".join(f"<#{cid}>" for cid in channels_with_same)
+        embed = _embed(
+            "⚠ Posible Cuenta Hackeada",
+            f"**Usuario:** {message.author.mention} (`{message.author.id}`)\n"
+            f"**Canales afectados ({len(channels_with_same)}):** {channel_list}\n"
+            f"**Mensajes eliminados:** {deleted_count}\n"
+            f"**Contenido:**\n>>> {content[:1500]}",
+            EMBED_COLORS["warning"],
+        )
+        embed.set_footer(text="Anti-spam automático")
+        await pruebas_channel.send(embed=embed)
 
 
 @bot.event
