@@ -252,13 +252,22 @@ async def sd(ctx, *, texto: str):
         else:
             voice_client = await voice_channel.connect(self_deaf=False)
 
-        def after_play(error):
-            if error:
-                print(f"Error de reproducción: {error}")
+        user_msg = ctx.message
+        try:
+            await user_msg.delete()
+        except Exception as e:
+            print(f"Error al borrar mensaje del usuario: {type(e).__name__}: {e}")
+
+        async def _cleanup():
             try:
                 os.remove(filename)
             except Exception:
                 pass
+
+        def after_play(error):
+            if error:
+                print(f"Error de reproducción: {error}")
+            asyncio.run_coroutine_threadsafe(_cleanup(), bot.loop)
 
         source = discord.FFmpegPCMAudio(filename)
         voice_client.play(source, after=after_play)
